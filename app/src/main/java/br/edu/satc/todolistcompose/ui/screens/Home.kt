@@ -2,49 +2,125 @@
 
 package br.edu.satc.todolistcompose.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTopAppBarState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import br.edu.satc.todolistcompose.TaskData
-import br.edu.satc.todolistcompose.ui.components.TaskCard
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import br.edu.satc.todolistcompose.data.AppDatabase
+import br.edu.satc.todolistcompose.data.Task
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
+// Componente TaskCard
 @Composable
-fun HomeScreen() {
+fun TaskCard(
+    title: String,
+    description: String,
+    complete: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    ElevatedCard(
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .fillMaxWidth()
+            .height(100.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Checkbox(
+                    checked = complete,
+                    onCheckedChange = onCheckedChange
+                )
+            }
+            Text(text = description, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+// Componente para adicionar nova tarefa
+@Composable
+fun NewTask(showBottomSheet: Boolean, onComplete: () -> Unit, viewModel: TaskViewModel) {
+    val sheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
+    var taskTitle by remember { mutableStateOf("") }
+    var taskDescription by remember { mutableStateOf("") }
+
+    if (showBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { onComplete() },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                OutlinedTextField(
+                    value = taskTitle,
+                    onValueChange = { taskTitle = it },
+                    label = { Text(text = "Título da tarefa") }
+                )
+                OutlinedTextField(
+                    value = taskDescription,
+                    onValueChange = { taskDescription = it },
+                    label = { Text(text = "Descrição da tarefa") }
+                )
+                Button(
+                    modifier = Modifier.padding(top = 4.dp),
+                    onClick = {
+                        scope.launch {
+                            viewModel.addTask(Task(title = taskTitle, description = taskDescription, complete = false))
+                            sheetState.hide()
+                        }.invokeOnCompletion {
+                            if (!sheetState.isVisible) {
+                                onComplete()
+                            }
+                        }
+                    }
+                ) {
+                    Text("Salvar")
+                }
+            }
+        }
+    }
+}
+
+// Componente principal da tela
+@Composable
+fun HomeScreen(viewModel: TaskViewModel) {
     var showBottomSheet by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val tasks by viewModel.tasks.collectAsState(initial = emptyList())
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -76,75 +152,66 @@ fun HomeScreen() {
             )
         }
     ) { innerPadding ->
-        HomeContent(innerPadding)
-        NewTask(showBottomSheet) { showBottomSheet = false }
-    }
-}
-
-@Composable
-fun HomeContent(innerPadding: PaddingValues) {
-    val tasks = mutableListOf<TaskData>()
-    for (i in 0..5) {
-        tasks.add(TaskData("Tarefa $i", "Descricao $i", i % 2 == 0))
-    }
-
-    Column(
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .padding(top = innerPadding.calculateTopPadding())
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Top
-    ) {
-        for (task in tasks) {
-            TaskCard(task.title, task.description, task.complete)
-        }
-    }
-}
-
-@Composable
-fun NewTask(showBottomSheet: Boolean, onComplete: () -> Unit) {
-    val sheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-    var taskTitle by remember { mutableStateOf("") }
-    var taskDescription by remember { mutableStateOf("") }
-
-    if (showBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                onComplete()
-            },
-            sheetState = sheetState
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .padding(top = innerPadding.calculateTopPadding())
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Top
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                OutlinedTextField(
-                    value = taskTitle,
-                    onValueChange = { taskTitle = it },
-                    label = { Text(text = "Título da tarefa") }
-                )
-                OutlinedTextField(
-                    value = taskDescription,
-                    onValueChange = { taskDescription = it },
-                    label = { Text(text = "Descrição da tarefa") }
-                )
-                Button(
-                    modifier = Modifier.padding(top = 4.dp),
-                    onClick = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                onComplete()
-                            }
-                        }
+            tasks.forEach { task ->
+                TaskCard(
+                    title = task.title,
+                    description = task.description,
+                    complete = task.complete,
+                    onCheckedChange = { newCheckedState ->
+                        viewModel.updateTask(task.copy(complete = newCheckedState))
                     }
-                ) {
-                    Text("Salvar")
-                }
+                )
             }
         }
+        NewTask(showBottomSheet, { showBottomSheet = false }, viewModel)
     }
+}
+
+// ViewModel para tarefas
+class TaskViewModel(private val database: AppDatabase) : ViewModel() {
+    val tasks: Flow<List<Task>> = database.taskDao().getAllTasks()
+
+    fun addTask(task: Task) {
+        viewModelScope.launch {
+            database.taskDao().insertTask(task)
+        }
+    }
+
+    fun updateTask(task: Task) {
+        viewModelScope.launch {
+            database.taskDao().updateTask(task)
+        }
+    }
+}
+
+// Factory para ViewModel
+class TaskViewModelFactory(private val database: AppDatabase) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(TaskViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return TaskViewModel(database) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+
+// Função principal para definir o conteúdo da tela
+@Composable
+fun App() {
+    val context = LocalContext.current
+    val database = AppDatabase.getDatabase(context)
+    val viewModel = ViewModelProvider(
+        LocalContext.current as ComponentActivity,
+        TaskViewModelFactory(database)
+    ).get(TaskViewModel::class.java)
+
+    HomeScreen(viewModel = viewModel)
 }
